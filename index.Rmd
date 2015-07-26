@@ -1,0 +1,107 @@
+---
+title: "Prediction Assignment Writeup"
+output: html_document
+---
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+## Goal
+
+In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data Processing
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+```{r warning = FALSE, message = FALSE}
+# read data from csv
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+
+# remove columns with mostly missing values
+validVar <- colSums(is.na(training)) == 0 & colSums(training == "") == 0
+training <- training[,validVar]
+
+# remove irrelevant columns
+training <- training[,grep("user_name|belt|arm|dumbbell|classe", names(training))]
+
+# create data partitions for cross validation
+set.seed(12345)
+library(caret)
+inTrain <- createDataPartition(y = training$classe, p = 0.75, list = FALSE)
+training_set <- training[inTrain,]
+validation_set <- training[-inTrain,]
+```
+
+Columns with mostly missing values were removed from the training data as they do not provide useful information. Columns that are not related to the classe outcome were also removed.
+
+The training data is partitioned into a training and validation set for cross validation. The training set will be used to train the prediction models. The validation set will be used to check the accuracy of the prediction models and estimate the out-of-sample errors.
+
+## Model Building
+
+```{r cache = TRUE}
+rf <- train(classe ~ ., method = "rf", data = training_set)
+gbm <- train(classe ~ ., method = "gbm", data = training_set, verbose = FALSE)
+```
+
+2 prediction models were separately built from the training set using random forest and boosting machine learning algorithms. These prediction models will then be separately applied to the validation set and the testing data so that we can compare and verify the results.
+
+## In-sample error
+
+```{r warning = FALSE, message = FALSE}
+pred_rf_train <- predict(rf, training_set)
+confusionMatrix(pred_rf_train, training_set$classe)
+```
+
+The in-sample error for the random forest model is 1 - 1 = 0%. 
+
+```{r warning = FALSE, message = FALSE}
+pred_gbm_train <- predict(gbm, training_set)
+confusionMatrix(pred_gbm_train, training_set$classe)
+```
+
+The in-sample error for the boosting model is 1 - 0.9734 = 2.66%.
+
+## Out-of-sample error
+
+```{r}
+pred_rf_val <- predict(rf, validation_set)
+confusionMatrix(pred_rf_val, validation_set$classe)
+```
+
+The expected out-of-sample error for the random forest model is 1 - 0.9949 = 0.51%. 
+
+```{r}
+pred_gbm_val <- predict(gbm, validation_set)
+confusionMatrix(pred_gbm_val, validation_set$classe)
+```
+
+The expected out-of-sample error for the boosting model is 1 - 0.9594 = 4.06%.
+
+## Predict 20 different test cases
+
+```{r}
+pred_rf_test <- predict(rf, testing)
+pred_rf_test
+
+pred_gbm_test <- predict(gbm, testing)
+pred_gbm_test
+```
+
+The trained random forest and boosting prediction models were independently applied to each of the 20 test cases in the testing data set. It was observed that both prediction models resulted in the same set of results except for the first test case. Since the random forest model has a lower in-sample and out-of-sample error, the results from the random forest model will be chosen for submission.
+
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(pred_rf_test)
+```
+
+The above code was used to create the 20 text files for submission. All the 20 results were verified by the marking system to be correct.
